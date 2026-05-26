@@ -1,0 +1,29 @@
+config_version: 3
+
+name: dapi-demo
+
+dataplaneapi:
+  host: 0.0.0.0
+  port: 5555
+  scheme:
+    - http
+
+haproxy:
+  config_file: /usr/local/etc/haproxy/haproxy.cfg
+  haproxy_bin: /usr/sbin/haproxy
+  reload_delay: 5
+  reload_strategy: custom
+  reload_cmd: kill -USR2 $(cat /var/run/haproxy/haproxy.pid 2>/dev/null || echo 0)
+  transaction_dir: /etc/haproxy/transactions
+  maps_dir: /etc/haproxy/maps
+  backup_dir: /tmp/haproxy-backups
+
+log:
+  log_to: stdout
+  log_level: info
+  log_format: text
+
+users:
+  - name: admin
+    password: adminpwd
+    insecure: true

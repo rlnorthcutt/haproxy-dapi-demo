@@ -1,0 +1,33 @@
+id: 01-get-it-running
+title: Minimum config + connect
+category: config
+reload: false
+description: |
+  Verify the Data Plane API is reachable, learn the v3 URL structure,
+  and explore what the /info and /specification endpoints expose.
+  This is the API discovery phase — no config changes yet.
+
+steps:
+  - title: Check API version info
+    explain: The /info endpoint returns the running DPA and HAProxy versions. Good first sanity check.
+    run: curl -su $AUTH $API/info | python3 -m json.tool
+
+  - title: List configured backends
+    explain: Every resource in HAProxy config is reachable via a REST path. Backends live under /services/haproxy/configuration/backends.
+    run: curl -su $AUTH $HAP/configuration/backends | python3 -m json.tool
+
+  - title: List servers in be_app
+    explain: Servers belong to a backend. The path nests under the backend name.
+    run: curl -su $AUTH $HAP/configuration/backends/be_app/servers | python3 -m json.tool
+
+  - title: Show current config version
+    explain: Every change to HAProxy config increments a version number. Transactions pin to a version to prevent conflicts.
+    run: curl -su $AUTH $HAP/configuration/version
+
+  - title: Fetch raw HAProxy config
+    explain: The API can return the raw haproxy.cfg text. Useful for showing the audience exactly what changed.
+    run: curl -su $AUTH $HAP/configuration/raw
+
+verify:
+  - run: curl -su $AUTH $API/info
+    contains: '"version"'

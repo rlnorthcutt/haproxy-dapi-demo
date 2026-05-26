@@ -1,0 +1,40 @@
+id: discover-spec
+title: API discovery via /info and /specification
+category: config
+reload: false
+description: |
+  The DPA is self-documenting. /info returns runtime metadata; /specification
+  returns the full OpenAPI spec. Useful for exploring what's possible without
+  reading docs — and for generating client SDKs.
+
+steps:
+  - title: Fetch /info
+    explain: Version, build info, and API capabilities in one call.
+    run: curl -su $AUTH $API/info | python3 -m json.tool
+
+  - title: Count available API endpoints
+    explain: The OpenAPI spec declares every path. Let's count them to illustrate the breadth.
+    run: |
+      curl -su $AUTH $API/specification | python3 -c "
+      import sys, json
+      spec = json.load(sys.stdin)
+      paths = spec.get('paths', {})
+      ops = sum(len(v) for v in paths.values())
+      print(f'Paths: {len(paths)}')
+      print(f'Operations: {ops}')
+      "
+
+  - title: List resource categories
+    explain: The paths are organized by resource type. This shows the top-level categories.
+    run: |
+      curl -su $AUTH $API/specification | python3 -c "
+      import sys, json
+      spec = json.load(sys.stdin)
+      tags = sorted({t for path in spec.get('paths', {}).values() for op in path.values() for t in op.get('tags', [])})
+      for t in tags:
+          print(' ', t)
+      "
+
+verify:
+  - run: curl -su $AUTH $API/info
+    contains: '"version"'

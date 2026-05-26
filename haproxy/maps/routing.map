@@ -1,0 +1,4 @@
+# HAProxy path-prefix routing map.
+# Format: <path-prefix> <backend>
+# Populated by Demo 3 (03-update-map).
+# Example: /canary  be_canary

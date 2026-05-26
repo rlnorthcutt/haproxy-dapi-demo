@@ -1,0 +1,41 @@
+id: 03-update-map
+title: Update a routing map · zero reload
+category: runtime
+reload: false
+description: |
+  HAProxy map files can be updated at runtime without a transaction or reload.
+  We add an entry to routing.map to route /canary traffic to be_canary.
+  The change is instant — no SIGUSR2, no transaction, no downtime.
+
+prereqs:
+  - reset
+
+steps:
+  - title: Show current map entries
+    explain: The runtime API exposes live map file contents. No transaction needed — these are runtime-only operations.
+    run: curl -su $AUTH "$API/services/haproxy/runtime/maps/routing.map"
+
+  - title: Add /canary route to be_canary
+    explain: POST a new entry to the map. The path prefix /canary will now route to be_canary — immediately, no reload.
+    run: |
+      curl -sX POST -u $AUTH \
+        -H 'Content-Type: application/json' \
+        "$API/services/haproxy/runtime/maps/routing.map" \
+        -d '{"key":"/canary","value":"be_canary"}'
+
+  - title: Verify the map entry exists
+    explain: Read the map back to confirm our entry is there.
+    run: curl -su $AUTH "$API/services/haproxy/runtime/maps/routing.map"
+
+  - title: Test the routing rule
+    explain: Requests to /canary should now reach backend-3. No reload happened — this is the power of runtime APIs.
+    run: |
+      curl -s http://haproxy/canary | grep -o 'Server name: [^<]*'
+      curl -s http://haproxy/ | grep -o 'Server name: [^<]*'
+
+verify:
+  - run: curl -su $AUTH "$API/services/haproxy/runtime/maps/routing.map"
+    contains: '"key":"/canary"'
+
+cleanup:
+  - reset

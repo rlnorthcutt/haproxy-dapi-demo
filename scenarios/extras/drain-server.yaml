@@ -1,0 +1,40 @@
+id: drain-server
+title: Drain a server via runtime API
+category: runtime
+reload: false
+description: |
+  Set a server to maintenance mode via the runtime API. Existing connections
+  drain gracefully; new requests skip the server. No transaction, no reload.
+  This is how you pull a backend for deployment without dropping traffic.
+
+steps:
+  - title: Show current server states
+    explain: The runtime API exposes live server health and admin state.
+    run: curl -su $AUTH "$API/services/haproxy/runtime/servers?backend_name=be_app" | python3 -m json.tool
+
+  - title: Set web2 to maintenance mode
+    explain: Setting admin state to maint immediately stops new connections to web2. Existing sessions complete.
+    run: |
+      curl -sX PUT -u $AUTH \
+        -H 'Content-Type: application/json' \
+        "$API/services/haproxy/runtime/servers/web2?backend_name=be_app" \
+        -d '{"admin_state":"maint"}' | python3 -m json.tool
+
+  - title: Verify only web1 gets traffic
+    explain: All requests should now go to web1 only.
+    run: |
+      for i in 1 2 3 4; do
+        curl -s http://haproxy/ | grep -o 'Server name: [^<]*'
+      done
+
+  - title: Re-enable web2
+    explain: Restore web2 to ready state. New connections resume immediately.
+    run: |
+      curl -sX PUT -u $AUTH \
+        -H 'Content-Type: application/json' \
+        "$API/services/haproxy/runtime/servers/web2?backend_name=be_app" \
+        -d '{"admin_state":"ready"}' | python3 -m json.tool
+
+verify:
+  - run: curl -su $AUTH "$API/services/haproxy/runtime/servers/web2?backend_name=be_app"
+    contains: '"admin_state":"ready"'

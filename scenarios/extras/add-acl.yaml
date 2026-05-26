@@ -1,0 +1,53 @@
+id: add-acl
+title: Add ACL + use_backend rule
+category: config
+reload: true
+description: |
+  Add a Host-header ACL and a use_backend rule to route mobile clients to
+  be_canary. This shows nested config objects beyond server management —
+  frontends, ACLs, and routing rules are all first-class API resources.
+
+prereqs:
+  - reset
+
+steps:
+  - title: Open a transaction
+    explain: Both the ACL and the use_backend rule go into one transaction for atomic application.
+    run: |
+      VER=$(curl -su $AUTH $HAP/configuration/version)
+      TX=$(curl -sX POST -u $AUTH "$HAP/transactions?version=$VER" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+      echo "Transaction: $TX"
+
+  - title: Add the mobile ACL to fe_main
+    explain: The ACL matches requests with a User-Agent containing "Mobile".
+    run: |
+      curl -sX POST -u $AUTH \
+        -H 'Content-Type: application/json' \
+        "$HAP/configuration/frontends/fe_main/acls?transaction_id=$TX" \
+        -d '{"index":0,"name":"is_mobile","criterion":"hdr_sub(User-Agent)","value":"Mobile"}' | python3 -m json.tool
+
+  - title: Add use_backend rule
+    explain: When is_mobile matches, route to be_canary.
+    run: |
+      curl -sX POST -u $AUTH \
+        -H 'Content-Type: application/json' \
+        "$HAP/configuration/frontends/fe_main/backend_switching_rules?transaction_id=$TX" \
+        -d '{"index":0,"name":"","cond":"if","cond_test":"is_mobile","backend_name":"be_canary"}' | python3 -m json.tool
+
+  - title: Commit the transaction
+    explain: Both ACL and routing rule apply in one reload.
+    run: |
+      curl -sX PUT -u $AUTH "$HAP/transactions/$TX" | python3 -m json.tool
+
+  - title: Test mobile routing
+    explain: A request with a mobile User-Agent should hit be_canary (backend-3).
+    run: |
+      curl -s -A "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)" http://haproxy/ | grep -o 'Server name: [^<]*'
+      curl -s http://haproxy/ | grep -o 'Server name: [^<]*'
+
+verify:
+  - run: curl -su $AUTH "$HAP/configuration/frontends/fe_main/acls"
+    contains: '"name":"is_mobile"'
+
+cleanup:
+  - reset

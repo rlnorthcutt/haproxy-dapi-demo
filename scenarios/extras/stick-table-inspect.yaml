@@ -1,0 +1,30 @@
+id: stick-table-inspect
+title: Inspect stick tables via runtime API
+category: runtime
+reload: false
+description: |
+  Stick tables store per-client state for rate limiting, session affinity,
+  and connection tracking. The runtime API exposes live table contents —
+  something impossible to introspect with traditional HAProxy tooling.
+
+steps:
+  - title: List stick tables
+    explain: Show all defined stick tables. The runtime API makes these visible without touching the socket directly.
+    run: curl -su $AUTH "$API/services/haproxy/runtime/stick_tables" | python3 -m json.tool
+
+  - title: Generate some traffic
+    explain: Make a few requests so the stick table has something to show.
+    run: |
+      for i in 1 2 3 4 5; do
+        curl -s http://haproxy/ > /dev/null
+      done
+      echo "Sent 5 requests"
+
+  - title: Inspect stick table entries
+    explain: View per-IP counters and session data in real time. No HAProxy restart required.
+    run: |
+      curl -su $AUTH "$API/services/haproxy/runtime/stick_table_entries?stick_table=be_app" | python3 -m json.tool
+
+verify:
+  - run: curl -su $AUTH "$API/services/haproxy/runtime/stick_tables"
+    contains: "[]"

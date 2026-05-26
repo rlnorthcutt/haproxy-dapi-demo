@@ -1,0 +1,47 @@
+id: 02-add-server
+title: Add a server with a transaction
+category: config
+reload: true
+description: |
+  Most config changes require a transaction. We capture the current version,
+  open a transaction, add web3 to the backend, and commit — which triggers
+  a live HAProxy reload. Watch the dataplaneapi logs pane on the right.
+
+prereqs:
+  - reset
+
+steps:
+  - title: Start a configuration transaction
+    explain: Capture the current config version, then open a transaction pinned to it. The version prevents overwriting concurrent changes.
+    run: |
+      VER=$(curl -su $AUTH $HAP/configuration/version)
+      echo "Version: $VER"
+      TX=$(curl -sX POST -u $AUTH "$HAP/transactions?version=$VER" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+      echo "Transaction: $TX"
+
+  - title: Add web3 to backend be_app
+    explain: Now we POST a server to the backend, scoped to our transaction. Nothing is live yet — HAProxy hasn't reloaded.
+    run: |
+      curl -sX POST -u $AUTH \
+        -H 'Content-Type: application/json' \
+        "$HAP/configuration/backends/be_app/servers?transaction_id=$TX" \
+        -d '{"name":"web3","address":"backend-3","port":80,"check":"enabled"}' | python3 -m json.tool
+
+  - title: Commit the transaction (triggers reload)
+    explain: Committing validates the config and triggers a live reload. The change is atomic — either all changes apply or none do.
+    run: |
+      curl -sX PUT -u $AUTH "$HAP/transactions/$TX" | python3 -m json.tool
+
+  - title: Verify web3 is taking traffic
+    explain: A few requests through the frontend should now reach web3 alongside web1 and web2.
+    run: |
+      for i in 1 2 3 4 5 6; do
+        curl -s http://haproxy/ | grep -o 'Server name: [^<]*'
+      done
+
+verify:
+  - run: curl -su $AUTH $HAP/configuration/backends/be_app/servers
+    contains: '"name":"web3"'
+
+cleanup:
+  - reset

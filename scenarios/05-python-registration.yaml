@@ -1,0 +1,39 @@
+id: 05-python-registration
+title: Service registration loop · Python
+category: client
+reload: true
+description: |
+  Real service meshes register backends dynamically. This Python script
+  simulates a service that registers itself via the Data Plane API,
+  handling the version-conflict retry (400 response) that happens when
+  two registrations race. Watch the transaction retry logic in the output.
+
+prereqs:
+  - reset
+
+steps:
+  - title: Show the registration script
+    explain: The script lives in examples/python-registration/register.py inside the container. Let's read it so the audience can follow along.
+    run: cat /examples/register.py
+
+  - title: Register backend-3 as service web3
+    explain: Run the registration script. It opens a transaction, handles 400 conflicts with a retry, and commits the new server.
+    run: python3 /examples/register.py backend-3 80 web3 be_app
+
+  - title: Verify web3 is registered
+    explain: The script completed. Let's confirm the server appears in the backend config.
+    run: curl -su $AUTH $HAP/configuration/backends/be_app/servers | python3 -m json.tool
+
+  - title: Test load distribution
+    explain: Traffic should now round-robin across web1, web2, and web3.
+    run: |
+      for i in 1 2 3 4 5 6; do
+        curl -s http://haproxy/ | grep -o 'Server name: [^<]*'
+      done
+
+verify:
+  - run: curl -su $AUTH $HAP/configuration/backends/be_app/servers
+    contains: '"name":"web3"'
+
+cleanup:
+  - reset
