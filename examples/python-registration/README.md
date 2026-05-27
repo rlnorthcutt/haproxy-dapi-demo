@@ -29,7 +29,7 @@ python3 /examples/register.py backend-3 80 web3 be_app
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HAP` | `http://haproxy:5555/v3/services/haproxy` | Config API base |
-| `AUTH` | `admin:adminpwd` | Basic auth credentials |
+| `AUTH` | `admin:haproxypwd` | Basic auth credentials |
 
 These are pre-exported by the dapi-demo runner, matching the standard env
 used by all scenarios.

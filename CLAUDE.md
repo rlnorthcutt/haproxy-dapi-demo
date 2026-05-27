@@ -107,7 +107,7 @@ Pre-export env vars on `Open()`:
 ```sh
 export API=http://haproxy:5555/v3
 export HAP=$API/services/haproxy
-export AUTH=admin:adminpwd
+export AUTH=admin:haproxypwd
 ```
 
 These are the contract for scenario authors. If they change, every scenario file must be updated in the same commit.
@@ -190,9 +190,9 @@ Everything else: use judgment and commit.
 ## Quick reference
 
 - Image: `ghcr.io/haproxytech/haproxy-docker-alpine:s6-latest`
-- Default credentials: `admin:adminpwd`
+- Default credentials: `admin:haproxypwd`
 - API base: `http://haproxy:5555/v3` (inside the network)
 - API base from host: `http://localhost:5555/v3`
 - Client container: `dapi-client` (alpine + curl + jq + python3)
-- Reload signal: `podman kill -s USR2 haproxy`
+- Reload signal: `podman exec haproxy /package/admin/s6/command/s6-svc -2 /run/s6-rc/servicedirs/haproxy`
 - Reset: copy `haproxy/baseline.cfg` over `haproxy/haproxy.cfg`, send USR2.

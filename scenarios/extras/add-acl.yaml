@@ -42,8 +42,8 @@ steps:
   - title: Test mobile routing
     explain: A request with a mobile User-Agent should hit be_canary (backend-3).
     run: |
-      curl -s -A "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)" http://haproxy/ | grep -o 'Server name: [^<]*'
-      curl -s http://haproxy/ | grep -o 'Server name: [^<]*'
+      curl -s -A "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)" http://haproxy/ | grep -o 'backend-[0-9]'
+      curl -s http://haproxy/ | grep -o 'backend-[0-9]'
 
 verify:
   - run: curl -su $AUTH "$HAP/configuration/frontends/fe_main/acls"

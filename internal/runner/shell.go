@@ -17,7 +17,7 @@ import (
 // scenario file in the same commit.
 const envSetup = `export API=http://haproxy:5555/v3
 export HAP=$API/services/haproxy
-export AUTH=admin:adminpwd
+export AUTH=admin:haproxypwd
 `
 
 // Shell represents one persistent sh session inside the dapi-client container.
@@ -64,7 +64,7 @@ func Open(ctx context.Context) (*Shell, error) {
 	}
 
 	// Write env setup and drain via a marker so we know the shell is ready.
-	if _, err := fmt.Fprint(s.stdin, envSetup+"\n"); err != nil {
+	if _, err := fmt.Fprint(s.stdin, envSetup); err != nil {
 		_ = s.Close()
 		return nil, fmt.Errorf("writing env setup: %w", err)
 	}

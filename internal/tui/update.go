@@ -5,17 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/runner"
-	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/scenario"
 )
-
-// stepFinishedAdvanceMsg is returned by runStepAndAdvanceCmd (space key).
-// It carries the same payload as stepFinishedMsg but signals Update to also
-// advance the step pointer.
-type stepFinishedAdvanceMsg struct {
-	stepIdx int
-	result  StepResult
-}
 
 // Update is the Bubble Tea update function. Pure — no IO.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -31,6 +21,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
 	// ── Spinner ───────────────────────────────────────────────────────────
 
 	case spinner.TickMsg:
@@ -41,17 +34,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// ── Stack lifecycle ───────────────────────────────────────────────────
 
 	case stackReadyMsg:
-		m.stackReady = true
-		m.mode = ModePicker
+		// Only advance to picker from splash; don't clobber an already-selected scenario.
+		if m.mode == ModeSplash {
+			m.mode = ModePicker
+		}
 		ctx := context.Background()
 		return m, startLogsCmd(ctx)
 
 	case stackErrorMsg:
 		m.mode = ModeError
-		m.errTitle = "Cannot start"
-		m.errBody = "The compose stack failed to become healthy."
-		m.errGot = msg.err.Error()
-		m.errHint = "dapi-demo up"
+		m.errState = errorState{
+			title: "Cannot start",
+			body:  "The compose stack failed to become healthy.",
+			got:   msg.err.Error(),
+			hint:  "dapi-demo up",
+		}
 		return m, nil
 
 	// ── Log manager ───────────────────────────────────────────────────────
@@ -73,10 +70,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case shellErrorMsg:
 		m.mode = ModeError
-		m.errTitle = "Shell error"
-		m.errBody = "Could not open shell in dapi-client."
-		m.errGot = msg.err.Error()
-		m.errHint = "dapi-demo up"
+		m.errState = errorState{
+			title: "Shell error",
+			body:  "Could not open shell in dapi-client.",
+			got:   msg.err.Error(),
+			hint:  "dapi-demo up",
+		}
 		return m, nil
 
 	// ── Step execution ────────────────────────────────────────────────────
@@ -86,18 +85,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.stepIdx < len(m.results) {
 			m.results[msg.stepIdx] = msg.result
 		}
-		return m, m.spinner.Tick
-
-	case stepFinishedAdvanceMsg:
-		// space key: run + advance.
-		m.running = false
-		if msg.stepIdx < len(m.results) {
-			m.results[msg.stepIdx] = msg.result
-		}
-		// Advance only if the step didn't error.
-		if msg.result.Status != StatusError && msg.stepIdx < len(m.results)-1 {
-			m.stepIdx = msg.stepIdx + 1
-		}
+		m.outputScroll = 0 // reset to tail on new output
 		return m, m.spinner.Tick
 
 	// ── Verbose overlay ───────────────────────────────────────────────────
@@ -116,15 +104,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.running = false
 		if msg.err != nil {
 			m.mode = ModeError
-			m.errTitle = "Reset failed"
-			m.errBody = "Could not restore baseline config."
-			m.errGot = msg.err.Error()
-			m.errHint = "podman kill -s USR2 haproxy"
+			m.errState = errorState{
+				title: "Reset failed",
+				body:  "Could not restore baseline config.",
+				got:   msg.err.Error(),
+				hint:  "podman kill -s USR2 haproxy",
+			}
 		}
 		return m, nil
 	}
 
 	return m, nil
+}
+
+// quit stops background workers and signals Bubble Tea to exit.
+func (m Model) quit() (tea.Model, tea.Cmd) {
+	if m.logMgr != nil {
+		m.logMgr.Stop()
+	}
+	return m, tea.Quit
 }
 
 // handleKey dispatches key events by mode.
@@ -151,14 +149,14 @@ func (m Model) handleKeyError(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		ctx := context.Background()
 		return m, tea.Batch(m.spinner.Tick, waitForStack(ctx))
 	case "q", "ctrl+c":
-		return m, tea.Quit
+		return m.quit()
 	}
 	return m, nil
 }
 
 func (m Model) handleKeySplash(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "q" || msg.String() == "ctrl+c" {
-		return m, tea.Quit
+		return m.quit()
 	}
 	return m, nil
 }
@@ -166,7 +164,7 @@ func (m Model) handleKeySplash(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleKeyPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
-		return m, tea.Quit
+		return m.quit()
 	case "up", "k":
 		if m.pickerIdx > 0 {
 			m.pickerIdx--
@@ -195,7 +193,7 @@ func (m Model) handleKeyPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) handleKeyScenario(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.running {
 		if msg.String() == "q" || msg.String() == "ctrl+c" {
-			return m, tea.Quit
+			return m.quit()
 		}
 		return m, nil
 	}
@@ -206,20 +204,26 @@ func (m Model) handleKeyScenario(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 
 	case "q", "ctrl+c":
-		return m, tea.Quit
+		return m.quit()
 
 	case "n":
 		if m.stepIdx < len(steps)-1 {
 			m.stepIdx++
+			m.outputScroll = 0
+		} else {
+			// Last step — return to picker so the presenter can choose what's next.
+			m.mode = ModePicker
+			m.pickerIdx = m.scenarioIdx
 		}
 
 	case "p":
 		if m.stepIdx > 0 {
 			m.stepIdx--
+			m.outputScroll = 0
 		}
 
 	case " ":
-		// Run current step, then advance.
+		// Run current step, stay to show output. Press n to advance.
 		if m.shell == nil {
 			return m, nil
 		}
@@ -227,7 +231,7 @@ func (m Model) handleKeyScenario(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.results[m.stepIdx] = StepResult{Status: StatusRunning}
 		step := steps[m.stepIdx]
 		idx := m.stepIdx
-		return m, tea.Batch(m.spinner.Tick, runStepAndAdvanceCmd(ctx, m.shell, step, idx))
+		return m, tea.Batch(m.spinner.Tick, runStepCmd(ctx, m.shell, step, idx))
 
 	case "r":
 		// Run current step, stay on it.
@@ -271,7 +275,9 @@ func (m Model) handleKeyScenario(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleKeyVerbose(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "q", "ctrl+c", "esc", "v":
+	case "q", "ctrl+c":
+		return m.quit()
+	case "esc", "v":
 		m.mode = ModeScenario
 	case "j", "down":
 		m.verboseScroll++
@@ -283,23 +289,48 @@ func (m Model) handleKeyVerbose(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// runStepAndAdvanceCmd runs a step and returns stepFinishedAdvanceMsg so
-// Update knows to also advance the step pointer.
-func runStepAndAdvanceCmd(ctx context.Context, sh *runner.Shell, step scenario.Step, idx int) tea.Cmd {
-	return func() tea.Msg {
-		r := runner.Run(ctx, sh, step)
-		status := StatusDone
-		if r.Err != nil || r.ExitCode != 0 {
-			status = StatusError
+// handleMouse dispatches mouse wheel events to the appropriate scroll offset.
+// Left pane (X < leftW): controls outputScroll. Right pane: controls logScroll.
+// Verbose overlay: controls verboseScroll.
+func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action != tea.MouseActionPress {
+		return m, nil
+	}
+
+	if m.mode == ModeVerbose {
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			m.verboseScroll++
+		case tea.MouseButtonWheelDown:
+			if m.verboseScroll > 0 {
+				m.verboseScroll--
+			}
 		}
-		return stepFinishedAdvanceMsg{
-			stepIdx: idx,
-			result: StepResult{
-				Status:   status,
-				Output:   r.Output,
-				ExitCode: r.ExitCode,
-				Err:      r.Err,
-			},
+		return m, nil
+	}
+
+	if m.mode != ModeScenario {
+		return m, nil
+	}
+
+	leftW := (m.width * 6) / 10
+	switch msg.Button {
+	case tea.MouseButtonWheelUp:
+		if msg.X < leftW {
+			m.outputScroll++
+		} else {
+			m.logScroll++
+		}
+	case tea.MouseButtonWheelDown:
+		if msg.X < leftW {
+			if m.outputScroll > 0 {
+				m.outputScroll--
+			}
+		} else {
+			if m.logScroll > 0 {
+				m.logScroll--
+			}
 		}
 	}
+	return m, nil
 }

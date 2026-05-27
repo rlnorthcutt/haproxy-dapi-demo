@@ -1,29 +1,44 @@
-config_version: 3
-
-name: dapi-demo
-
+config_version: 2
+name: 004b67013535
 dataplaneapi:
   host: 0.0.0.0
   port: 5555
+  advertised:
+    api_address: ""
+    api_port: 0
   scheme:
-    - http
-
+  - http
+  userlist:
+    userlist: controller
+    userlist_file: ""
+  transaction:
+    transaction_dir: /usr/local/etc/haproxy/transactions
+    backups_number: 5
+    backups_dir: /usr/local/var/lib/dataplaneapi/backups
+  resources:
+    maps_dir: /usr/local/etc/haproxy/maps
+    ssl_certs_dir: /usr/local/etc/haproxy/certs
+    general_storage_dir: /usr/local/etc/haproxy/general
+    dataplane_storage_dir: /usr/local/var/lib/dataplaneapi/storage
+    spoe_dir: /usr/local/etc/haproxy/spoe
+  user:
+  - name: admin
+    insecure: true
+    password: haproxypwd
 haproxy:
   config_file: /usr/local/etc/haproxy/haproxy.cfg
-  haproxy_bin: /usr/sbin/haproxy
-  reload_delay: 5
-  reload_strategy: custom
-  reload_cmd: kill -USR2 $(cat /var/run/haproxy/haproxy.pid 2>/dev/null || echo 0)
-  transaction_dir: /etc/haproxy/transactions
-  maps_dir: /etc/haproxy/maps
-  backup_dir: /tmp/haproxy-backups
-
-log:
-  log_to: stdout
+  haproxy_bin: /usr/local/sbin/haproxy
+  master_runtime: /var/run/haproxy-master.sock
+  master_worker_mode: true
+  reload:
+    reload_delay: 5
+    reload_cmd: /package/admin/s6/command/s6-svc -2 /run/s6-rc/servicedirs/haproxy
+    restart_cmd: /package/admin/s6/command/s6-svc -r /run/s6-rc/servicedirs/haproxy
+    status_cmd: /package/admin/s6/command/s6-svstat -u /run/s6-rc/servicedirs/haproxy
+    reload_strategy: custom
+log_targets:
+- log_to: stdout
   log_level: info
-  log_format: text
-
-users:
-  - name: admin
-    password: adminpwd
-    insecure: true
+  log_types:
+  - access
+  - app

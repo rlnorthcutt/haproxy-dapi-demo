@@ -26,7 +26,7 @@ type shellOpenedMsg struct{ shell *runner.Shell }
 // shellErrorMsg signals that opening a shell failed.
 type shellErrorMsg struct{ err error }
 
-// stepFinishedMsg carries the result of running one step.
+// stepFinishedMsg carries the result of running one step (stay on step).
 type stepFinishedMsg struct {
 	stepIdx int
 	result  StepResult
@@ -49,6 +49,23 @@ type logLineMsg struct {
 
 // logManagerReadyMsg delivers a newly created log manager.
 type logManagerReadyMsg struct{ mgr *logs.Manager }
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+// toStepResult converts a runner.StepResult to a tui.StepResult, deriving
+// Status from whether the step errored or returned a non-zero exit code.
+func toStepResult(r runner.StepResult) StepResult {
+	status := StatusDone
+	if r.Err != nil || r.ExitCode != 0 {
+		status = StatusError
+	}
+	return StepResult{
+		Status:   status,
+		Output:   r.Output,
+		ExitCode: r.ExitCode,
+		Err:      r.Err,
+	}
+}
 
 // ── commands ──────────────────────────────────────────────────────────────────
 
@@ -74,7 +91,9 @@ func waitForStack(ctx context.Context) tea.Cmd {
 // startLogsCmd launches log tailers and returns a logManagerReadyMsg.
 func startLogsCmd(ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
-		mgr, err := logs.NewManager(ctx, []string{"haproxy", "dataplaneapi"})
+		// Both HAProxy and Data Plane API log to the same container ("haproxy").
+		// Lines are routed to separate buffers in appendLog by content.
+		mgr, err := logs.NewManager(ctx, []string{"haproxy"})
 		if err != nil {
 			// Non-fatal: log tailing is supplementary to the demo.
 			return nil
@@ -106,23 +125,10 @@ func openShellCmd(ctx context.Context) tea.Cmd {
 	}
 }
 
-// runStepCmd executes one step and returns stepFinishedMsg.
+// runStepCmd executes one step and returns stepFinishedMsg (stay on step).
 func runStepCmd(ctx context.Context, sh *runner.Shell, step scenario.Step, idx int) tea.Cmd {
 	return func() tea.Msg {
-		r := runner.Run(ctx, sh, step)
-		status := StatusDone
-		if r.Err != nil || r.ExitCode != 0 {
-			status = StatusError
-		}
-		return stepFinishedMsg{
-			stepIdx: idx,
-			result: StepResult{
-				Status:   status,
-				Output:   r.Output,
-				ExitCode: r.ExitCode,
-				Err:      r.Err,
-			},
-		}
+		return stepFinishedMsg{stepIdx: idx, result: toStepResult(runner.Run(ctx, sh, step))}
 	}
 }
 

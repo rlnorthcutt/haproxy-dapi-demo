@@ -5,7 +5,7 @@ reload: true
 description: |
   Real service meshes register backends dynamically. This Python script
   simulates a service that registers itself via the Data Plane API,
-  handling the version-conflict retry (400 response) that happens when
+  handling the version-conflict retry (406 response) that happens when
   two registrations race. Watch the transaction retry logic in the output.
 
 prereqs:
@@ -13,22 +13,30 @@ prereqs:
 
 steps:
   - title: Show the registration script
-    explain: The script lives in examples/python-registration/register.py inside the container. Let's read it so the audience can follow along.
+    explain: The script lives in /examples/register.py inside the container. Let's read it so the audience can follow along.
     run: cat /examples/register.py
 
-  - title: Register backend-3 as service web3
-    explain: Run the registration script. It opens a transaction, handles 400 conflicts with a retry, and commits the new server.
-    run: python3 /examples/register.py backend-3 80 web3 be_app
+  - title: Register two services concurrently
+    explain: |
+      Both scripts open a transaction at the same version. web3 holds its
+      transaction open (DEMO_PAUSE=2) while web4 races ahead and commits.
+      web3 then gets a 406 version conflict and retries — exactly what
+      happens in a real service mesh under load.
+    run: |
+      DEMO_PAUSE=2 python3 /examples/register.py backend-3 80 web3 be_app &
+      sleep 0.3
+      python3 /examples/register.py backend-3 80 web4 be_app &
+      wait
 
-  - title: Verify web3 is registered
-    explain: The script completed. Let's confirm the server appears in the backend config.
+  - title: Verify both servers are registered
+    explain: Both web3 and web4 are now live in be_app, despite the race.
     run: curl -su $AUTH $HAP/configuration/backends/be_app/servers | python3 -m json.tool
 
   - title: Test load distribution
-    explain: Traffic should now round-robin across web1, web2, and web3.
+    explain: Traffic should now round-robin across web1, web2, web3, and web4.
     run: |
-      for i in 1 2 3 4 5 6; do
-        curl -s http://haproxy/ | grep -o 'Server name: [^<]*'
+      for i in 1 2 3 4 5 6 7 8; do
+        curl -s http://haproxy/ | grep -o 'backend-[0-9]'
       done
 
 verify:

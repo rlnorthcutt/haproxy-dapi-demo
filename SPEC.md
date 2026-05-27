@@ -174,7 +174,7 @@ Pre-exported in the persistent shell when the scenario starts:
 |-----|-------|
 | `API` | `http://haproxy:5555/v3` |
 | `HAP` | `$API/services/haproxy` |
-| `AUTH` | `admin:adminpwd` |
+| `AUTH` | `admin:haproxypwd` |
 
 Steps may define and reuse their own variables (`VER`, `TX`, etc.). State persists across steps within a single scenario run; it is reset between runs.
 
@@ -419,7 +419,7 @@ Phases are sequential. Each ends with a checkpoint that must pass before the nex
 
 **Deliverable:** `podman compose up` brings up HAProxy + DPA + 3 backends + client, all healthy.
 
-**Checkpoint:** `podman exec dapi-client curl -su admin:adminpwd http://haproxy:5555/v3/info` returns JSON.
+**Checkpoint:** `podman exec dapi-client curl -su admin:haproxypwd http://haproxy:5555/v3/info` returns JSON.
 
 Files: `compose.yaml`, `haproxy/haproxy.cfg`, `haproxy/baseline.cfg`, `haproxy/dataplaneapi.yml`, `haproxy/maps/routing.map`, `haproxy/certs/*`.
 

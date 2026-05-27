@@ -13,38 +13,37 @@ prereqs:
 
 steps:
   - title: List current certificates
-    explain: The storage endpoint shows all certs known to the DPA. Our baseline has api-2025.pem.
+    explain: The storage endpoint shows all certs known to the DPA. Our baseline has only api-2025.pem.
     run: curl -su $AUTH "$API/services/haproxy/storage/ssl_certificates" | python3 -m json.tool
 
   - title: Upload api-2026.pem
-    explain: We POST the cert bundle as multipart/form-data. The DPA stores it and makes it available for binding.
+    explain: Remove any previous copy first, then POST the new bundle. The DPA writes it into the certs directory and makes it available for binding.
     run: |
+      curl -sX DELETE -u $AUTH \
+        "$API/services/haproxy/storage/ssl_certificates/api-2026.pem" > /dev/null 2>&1 || true
       curl -sX POST -u $AUTH \
-        -F 'file=@/etc/haproxy/certs/api-2026.pem' \
+        -F 'file_upload=@/staging/api-2026.pem' \
         "$API/services/haproxy/storage/ssl_certificates" | python3 -m json.tool
 
-  - title: Open a transaction and update the HTTPS frontend
-    explain: Changing which cert a frontend uses requires a config transaction and reload.
+  - title: Open a transaction and update the HTTPS bind
+    explain: Binds are a sub-resource of a frontend. We PUT to the bind directly to swap the cert, then commit.
     run: |
       VER=$(curl -su $AUTH $HAP/configuration/version)
       TX=$(curl -sX POST -u $AUTH "$HAP/transactions?version=$VER" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
       echo "Transaction: $TX"
       curl -sX PUT -u $AUTH \
         -H 'Content-Type: application/json' \
-        "$HAP/configuration/frontends/fe_https?transaction_id=$TX" \
-        -d '{"name":"fe_https","binds":[{"name":"fe_https_bind","address":"*","port":443,"ssl":true,"ssl_certificate":"/etc/haproxy/certs/api-2026.pem"}]}' | python3 -m json.tool
+        "$HAP/configuration/frontends/fe_https/binds/:443?transaction_id=$TX" \
+        -d '{"name":":443","port":443,"ssl":true,"ssl_certificate":"/usr/local/etc/haproxy/certs/api-2026.pem"}' | python3 -m json.tool
 
-  - title: Commit the transaction
-    explain: HAProxy reloads and the new cert is live. The old cert is still on disk but no longer in use.
+  - title: Commit the transaction (triggers reload)
+    explain: Committing validates the config and triggers a live reload. The 2026 cert is now active.
     run: |
-      VER=$(curl -su $AUTH $HAP/configuration/version)
-      TX=$(curl -sX POST -u $AUTH "$HAP/transactions?version=$VER" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
       curl -sX PUT -u $AUTH "$HAP/transactions/$TX" | python3 -m json.tool
 
-  - title: Verify the new cert is served
-    explain: Connect to the HTTPS frontend and check the certificate subject. It should show 2026.
-    run: |
-      curl -sk https://haproxy/ -o /dev/null -w "%{ssl_verify_result} %{num_connects}\n"
+  - title: Verify both certs are in storage
+    explain: The 2025 cert is still on disk (not yet removed), and the 2026 cert was just uploaded. Rotation complete.
+    run: curl -su $AUTH "$API/services/haproxy/storage/ssl_certificates" | python3 -m json.tool
 
 verify:
   - run: curl -su $AUTH "$API/services/haproxy/storage/ssl_certificates"

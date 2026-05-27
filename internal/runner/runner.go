@@ -79,18 +79,20 @@ func RunCleanup(ctx context.Context, sh *Shell, cleanup []string, scenarios []sc
 	return RunPrereqs(ctx, sh, cleanup, scenarios)
 }
 
+// verboseReplacer upgrades curl -s flags to -vs so the full protocol trace
+// appears in output. Specific patterns come first to prevent partial matches
+// (e.g. -su must match before the -s catch-all).
+var verboseReplacer = strings.NewReplacer(
+	"curl -su", "curl -vsu",
+	"curl -sX", "curl -vsX",
+	"curl -s ", "curl -vs ",
+	"curl -s\t", "curl -vs\t",
+	"curl -s\n", "curl -vs\n",
+	"curl -s", "curl -vs", // trailing / bare catch-all
+)
+
 // injectVerbose replaces -s flags in curl invocations with -vs so the full
 // protocol trace is included. Only touches curl calls, not other commands.
 func injectVerbose(cmd string) string {
-	cmd = strings.ReplaceAll(cmd, "curl -su", "curl -vsu")
-	cmd = strings.ReplaceAll(cmd, "curl -s ", "curl -vs ")
-	cmd = strings.ReplaceAll(cmd, "curl -sX", "curl -vsX")
-	cmd = strings.ReplaceAll(cmd, "curl -s\t", "curl -vs\t")
-	cmd = strings.ReplaceAll(cmd, "curl -s\n", "curl -vs\n")
-	// Catch bare 'curl -s' at end of string.
-	if strings.HasSuffix(strings.TrimSpace(cmd), "curl -s") {
-		cmd = strings.TrimRight(cmd, " \t\n")
-		cmd = cmd[:len(cmd)-len("curl -s")] + "curl -vs"
-	}
-	return cmd
+	return verboseReplacer.Replace(cmd)
 }

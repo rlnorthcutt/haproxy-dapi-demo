@@ -9,20 +9,16 @@ services:
     image: ghcr.io/haproxytech/haproxy-docker-alpine:s6-latest
     container_name: haproxy
     ports:
-      - "8080:80"
-      - "8443:443"
+      - "18080:80"
+      - "18443:443"
       - "5555:5555"
-      - "8404:8404"
+      - "18404:8404"
     volumes:
-      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-      - ./haproxy/dataplaneapi.yml:/etc/haproxy/dataplaneapi.yml:ro
-      - ./haproxy/maps:/etc/haproxy/maps
-      - ./haproxy/certs:/etc/haproxy/certs:ro
-      - ./haproxy/transactions:/etc/haproxy/transactions
+      - ./haproxy:/usr/local/etc/haproxy:z
     networks:
       - dapi-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- --user admin:adminpwd http://localhost:5555/v3/info > /dev/null 2>&1"]
+      test: ["CMD-SHELL", "wget -qO- http://admin:haproxypwd@localhost:5555/v3/info > /dev/null 2>&1"]
       interval: 5s
       timeout: 5s
       retries: 15
@@ -32,6 +28,7 @@ services:
   backend-1:
     image: nginxdemos/hello
     container_name: backend-1
+    hostname: backend-1
     networks:
       - dapi-net
     healthcheck:
@@ -43,6 +40,7 @@ services:
   backend-2:
     image: nginxdemos/hello
     container_name: backend-2
+    hostname: backend-2
     networks:
       - dapi-net
     healthcheck:
@@ -54,6 +52,7 @@ services:
   backend-3:
     image: nginxdemos/hello
     container_name: backend-3
+    hostname: backend-3
     networks:
       - dapi-net
     healthcheck:
@@ -69,6 +68,9 @@ services:
       sh -c "apk add --no-cache curl jq python3 py3-requests > /dev/null 2>&1 &&
              echo 'dapi-client ready' &&
              tail -f /dev/null"
+    volumes:
+      - ./haproxy/staging:/staging:ro,z
+      - ./examples/python-registration:/examples:ro,z
     networks:
       - dapi-net
     depends_on:

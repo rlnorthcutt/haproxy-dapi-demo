@@ -48,10 +48,15 @@ func Reset(ctx context.Context) error {
 		return fmt.Errorf("copying baseline.cfg to haproxy.cfg: %w", err)
 	}
 
-	// Reload: send USR2 to the haproxy container process.
-	cmd := exec.CommandContext(ctx, "podman", "kill", "-s", "USR2", "haproxy")
+	// Reload via s6: send SIGUSR2 to the supervised haproxy service.
+	// We must target the haproxy service specifically via s6-svc, not the
+	// container PID 1 (which is s6 itself — USR2 to s6 stops everything).
+	cmd := exec.CommandContext(ctx, "podman", "exec", "haproxy",
+		"/package/admin/s6/command/s6-svc", "-2",
+		"/run/s6-rc/servicedirs/haproxy",
+	)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("sending USR2 to haproxy: %w (output: %s)", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("reloading haproxy via s6: %w (output: %s)", err, strings.TrimSpace(string(out)))
 	}
 
 	return nil
@@ -61,7 +66,7 @@ func Reset(ctx context.Context) error {
 func IsStackHealthy(ctx context.Context) bool {
 	cmd := exec.CommandContext(ctx,
 		"podman", "exec", "dapi-client",
-		"curl", "-su", "admin:adminpwd", "--max-time", "3",
+		"curl", "-su", "admin:haproxypwd", "--max-time", "3",
 		"http://haproxy:5555/v3/info",
 	)
 	out, err := cmd.Output()

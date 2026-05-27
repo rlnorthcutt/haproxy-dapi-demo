@@ -24,7 +24,7 @@ steps:
     explain: All requests should now go to web1 only.
     run: |
       for i in 1 2 3 4; do
-        curl -s http://haproxy/ | grep -o 'Server name: [^<]*'
+        curl -s http://haproxy/ | grep -o 'backend-[0-9]'
       done
 
   - title: Re-enable web2
