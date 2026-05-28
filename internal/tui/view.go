@@ -477,9 +477,12 @@ func (m Model) renderOutputPanel(width, height int) []string {
 		total := len(outputSrc)
 
 		// Apply scroll: 0 = tail; N = scrolled N lines toward older output.
+		// Hard cap at max(0, total-contentH) so the first output line can
+		// never scroll off the top — no blank panel.
+		maxScroll := max(0, total-contentH)
 		scroll := m.outputScroll
-		if scroll > total {
-			scroll = total
+		if scroll > maxScroll {
+			scroll = maxScroll
 		}
 		end := total - scroll
 		if end < 0 {
@@ -547,39 +550,40 @@ func (m Model) renderLogSection(container string, buf logBuffer, width, height i
 	}
 
 	visH := height - 1
-	src := buf.lines
 
-	// Clamp scroll to the buffer length so overshoot can't cause a loopback to
-	// tail and doesn't require many down-scrolls to recover.
-	scroll := m.logScroll
-	if scroll > len(src) {
-		scroll = len(src)
-	}
-
-	// Slice src: scroll=0 → full buffer (tail); scroll=N → drop last N source lines.
-	if scroll > 0 {
-		src = src[:len(src)-scroll]
-	}
-
-	// Expand source lines to physical (wrapped) lines. All wrapped pieces of one
-	// source line share the same severity color so the block looks uniform.
+	// Expand the FULL buffer to physical (post-wrap) lines first.
+	// Scrolling in physical-line units means one wheel tick = one visible row,
+	// regardless of whether source lines wrap. Width is unchanged from the
+	// caller — no column is reserved here.
 	var physical []string
-	for _, l := range src {
+	for _, l := range buf.lines {
 		style := logStyle(l)
 		for _, piece := range wrapLog(l, width) {
 			physical = append(physical, style.Render(piece))
 		}
 	}
+	total := len(physical)
 
-	start := 0
-	if len(physical) > visH {
-		start = len(physical) - visH
+	// Hard cap: never scroll past the first physical line (no blank panel).
+	maxScroll := max(0, total-visH)
+	scroll := m.logScroll
+	if scroll > maxScroll {
+		scroll = maxScroll
 	}
 
-	// Header: reflect tail vs. scrolled state.
+	// Determine the visible window (tail-anchored: scroll=0 shows newest).
+	viewEnd := total - scroll
+	if viewEnd < 0 {
+		viewEnd = 0
+	}
+	viewStart := viewEnd - visH
+	if viewStart < 0 {
+		viewStart = 0
+	}
+
+	// Header: show scroll position when not at tail.
 	var metaStr string
 	if scroll > 0 {
-		// Show how far above tail the user has scrolled.
 		metaStr = styleLogMeta.Render(fmt.Sprintf("  ↑ %d from tail", scroll))
 	} else {
 		above := max(0, buf.total-visH)
@@ -590,7 +594,7 @@ func (m Model) renderLogSection(container string, buf logBuffer, width, height i
 	header := styleLogLabel.Render("• "+container+" logs") + metaStr
 	lines := []string{trunc(header, width)}
 
-	for _, l := range physical[start:] {
+	for _, l := range physical[viewStart:viewEnd] {
 		lines = append(lines, l)
 	}
 
@@ -612,11 +616,17 @@ func (m Model) renderFooter() string {
 		{"q", "quit"},
 	}
 
-	// Build left-to-right using lipgloss.Width for visible-character measurement
-	// (trunc counts ANSI escape bytes as runes and cuts off too early).
 	sep := styleFooterSep.Render("  ")
 	sepW := lipgloss.Width(sep)
 
+	// Right-aligned scroll hints: stdout (left pane) then logs (right pane).
+	// j/k sits at the far right, visually beneath the log panels.
+	stdoutHint := styleFooterKey.Render("pg↑/↓") + styleFooterDesc.Render(" stdout")
+	logHint := styleFooterKey.Render("j/k") + styleFooterDesc.Render(" logs ")
+	rightBlock := stdoutHint + sep + logHint
+	rightW := lipgloss.Width(rightBlock)
+
+	// Build left bindings, stopping before they overlap the right block.
 	var parts []string
 	used := 1 // leading space
 	for _, b := range bindings {
@@ -625,13 +635,19 @@ func (m Model) renderFooter() string {
 		if len(parts) > 0 {
 			gap += sepW
 		}
-		if used+gap > m.width {
+		if used+gap > m.width-rightW {
 			break
 		}
 		parts = append(parts, part)
 		used += gap
 	}
-	return " " + strings.Join(parts, sep)
+
+	left := " " + strings.Join(parts, sep)
+	padW := m.width - lipgloss.Width(left) - rightW
+	if padW < 0 {
+		padW = 0
+	}
+	return left + strings.Repeat(" ", padW) + rightBlock
 }
 
 // ── verbose overlay ───────────────────────────────────────────────────────────

@@ -261,6 +261,15 @@ func (m Model) handleKeyScenario(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = ModePicker
 		m.pickerIdx = m.scenarioIdx
 
+	case "pgup":
+		m.outputScroll += 5
+
+	case "pgdown":
+		m.outputScroll -= 5
+		if m.outputScroll < 0 {
+			m.outputScroll = 0
+		}
+
 	case "j":
 		m.logScroll++
 
