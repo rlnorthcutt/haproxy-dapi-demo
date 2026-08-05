@@ -6,7 +6,7 @@ A turnkey terminal demo environment for the **HAProxy Data Plane API v3**.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ DEMO 2 · Add a server with a transaction    [CONFIG · RELOAD]   step 2 / 4  │
+│ DEMO 2 · Add a server with a transaction    [CONFIG · RELOAD]   step 2 / 4   │
 ├─────────────────────────────────────┬────────────────────────────────────────┤
 │ STEPS ────────────────────────────  │ • haproxy logs                         │
 │ ✓ 1  Capture current config version │   [NOTICE] Loading success.            │
@@ -21,11 +21,11 @@ A turnkey terminal demo environment for the **HAProxy Data Plane API v3**.
 │                                     │                                        │
 │  $ TX=$(curl -sX POST -u $AUTH \    │                                        │
 │      "$HAP/transactions?version=    │                                        │
-│      $VER" | jq -r .id)            │                                        │
+│      $VER" | jq -r .id)             │                                        │
 │  $ echo "Transaction: $TX"          │                                        │
 │                                     │                                        │
 │  ── stdout ──────────────────────   │                                        │
-│  Transaction: 7a2f-91bc-4e1d-...   │                                        │
+│  Transaction: 7a2f-91bc-4e1d-...    │                                        │
 ├─────────────────────────────────────┴────────────────────────────────────────┤
 │  n next  space run+next  r run  p prev  v verbose  R reset  l list  q quit   │
 └──────────────────────────────────────────────────────────────────────────────┘
