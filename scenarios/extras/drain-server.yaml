@@ -42,3 +42,6 @@ steps:
 verify:
   - run: curl -su $AUTH "$API/services/haproxy/runtime/backends/be_app/servers/web2"
     contains: '"admin_state":"ready"'
+
+cleanup:
+  - reset
