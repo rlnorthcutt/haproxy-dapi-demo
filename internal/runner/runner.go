@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/compose"
@@ -24,7 +25,7 @@ func Run(ctx context.Context, sh *Shell, step scenario.Step) StepResult {
 	default:
 	}
 
-	out, code, err := sh.Run(step.Run)
+	out, code, err := sh.Run(ctx, step.Run)
 	return StepResult{
 		Output:   strings.TrimRight(out, "\n"),
 		ExitCode: code,
@@ -39,7 +40,7 @@ func RunVerbose(ctx context.Context, sh *Shell, step scenario.Step) StepResult {
 	// Merge stderr so curl -v trace reaches the output region.
 	cmd = "( " + strings.TrimRight(cmd, "\n") + " ) 2>&1"
 
-	out, code, err := sh.Run(cmd)
+	out, code, err := sh.Run(ctx, cmd)
 	return StepResult{
 		Output:   strings.TrimRight(out, "\n"),
 		ExitCode: code,
@@ -79,20 +80,24 @@ func RunCleanup(ctx context.Context, sh *Shell, cleanup []string, scenarios []sc
 	return RunPrereqs(ctx, sh, cleanup, scenarios)
 }
 
-// verboseReplacer upgrades curl -s flags to -vs so the full protocol trace
-// appears in output. Specific patterns come first to prevent partial matches
-// (e.g. -su must match before the -s catch-all).
-var verboseReplacer = strings.NewReplacer(
-	"curl -su", "curl -vsu",
-	"curl -sX", "curl -vsX",
-	"curl -s ", "curl -vs ",
-	"curl -s\t", "curl -vs\t",
-	"curl -s\n", "curl -vs\n",
-	"curl -s", "curl -vs", // trailing / bare catch-all
-)
+// curlFlagsPattern matches a curl invocation's leading flag cluster, in
+// either short form (any run of short flags containing "s": -s, -su, -sX,
+// -Ss, -fs, ...) or the long form --silent. Matching the flag cluster
+// structurally, rather than a fixed set of exact strings, means it doesn't
+// miss spellings a scenario author might reasonably use.
+var curlFlagsPattern = regexp.MustCompile(`\bcurl(\s+(?:-[A-Za-z]*s[A-Za-z]*|--silent))`)
 
-// injectVerbose replaces -s flags in curl invocations with -vs so the full
-// protocol trace is included. Only touches curl calls, not other commands.
+// injectVerbose upgrades every curl invocation in cmd to include -v so the
+// full protocol trace appears in output. Only touches curl calls, not other
+// commands.
 func injectVerbose(cmd string) string {
-	return verboseReplacer.Replace(cmd)
+	return curlFlagsPattern.ReplaceAllStringFunc(cmd, func(match string) string {
+		if strings.Contains(match, "--silent") {
+			return strings.Replace(match, "--silent", "--silent -v", 1)
+		}
+		// Insert v right after the leading '-' of the short-flag cluster,
+		// e.g. "curl -su" -> "curl -vsu".
+		i := strings.IndexByte(match, '-')
+		return match[:i+1] + "v" + match[i+1:]
+	})
 }

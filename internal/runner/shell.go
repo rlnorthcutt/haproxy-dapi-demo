@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync/atomic"
 )
@@ -75,7 +76,7 @@ func Open(ctx context.Context) (*Shell, error) {
 		return nil, fmt.Errorf("writing init marker: %w", err)
 	}
 
-	if _, _, err := s.readUntilMarker(marker); err != nil {
+	if _, _, err := s.readUntilMarker(ctx, marker); err != nil {
 		_ = s.Close()
 		return nil, fmt.Errorf("waiting for shell init: %w", err)
 	}
@@ -85,8 +86,10 @@ func Open(ctx context.Context) (*Shell, error) {
 
 // Run executes cmd in the persistent shell and returns stdout, exit code, and
 // any transport error. The command string is written byte-identical to what
-// the user sees in the TUI.
-func (s *Shell) Run(cmd string) (stdout string, exitCode int, err error) {
+// the user sees in the TUI. If ctx is cancelled before the command completes,
+// the shell process is killed to unblock the read and Run returns ctx.Err();
+// the Shell must not be reused afterward.
+func (s *Shell) Run(ctx context.Context, cmd string) (stdout string, exitCode int, err error) {
 	marker := s.nextMarker()
 
 	// Write: command, then our sentinel that prints the exit code.
@@ -95,7 +98,7 @@ func (s *Shell) Run(cmd string) (stdout string, exitCode int, err error) {
 		return "", -1, fmt.Errorf("writing command to shell: %w", err)
 	}
 
-	return s.readUntilMarker(marker)
+	return s.readUntilMarker(ctx, marker)
 }
 
 // Close sends exit to the shell and waits for the process to terminate.
@@ -112,31 +115,62 @@ func (s *Shell) nextMarker() string {
 	return fmt.Sprintf("__DAPI_DONE_%d__", n)
 }
 
+// readResult carries the outcome of the background read in readUntilMarker.
+type readResult struct {
+	out  string
+	code int
+	err  error
+}
+
 // readUntilMarker reads stdout lines until one starts with marker.
 // It returns accumulated output (excluding the marker line) and the parsed
 // exit code embedded in the marker line as __DAPI_DONE_N__<code>.
-func (s *Shell) readUntilMarker(marker string) (string, int, error) {
-	var buf strings.Builder
+//
+// The read happens in a goroutine so ctx cancellation can interrupt it: the
+// underlying pipe read has no cancellation hook of its own, so on ctx.Done
+// we kill the shell process to unblock it, then drain the goroutine's result
+// before returning so it never leaks.
+func (s *Shell) readUntilMarker(ctx context.Context, marker string) (string, int, error) {
+	done := make(chan readResult, 1)
 
-	for {
-		line, err := s.stdout.ReadString('\n')
+	go func() {
+		var buf strings.Builder
 
-		trimmed := strings.TrimRight(line, "\r\n")
+		for {
+			line, err := s.stdout.ReadString('\n')
 
-		if strings.HasPrefix(trimmed, marker) {
-			code := 0
-			rest := strings.TrimPrefix(trimmed, marker)
-			_, _ = fmt.Sscanf(rest, "%d", &code)
-			return buf.String(), code, nil
-		}
+			trimmed := strings.TrimRight(line, "\r\n")
 
-		buf.WriteString(line)
-
-		if err != nil {
-			if err == io.EOF {
-				return buf.String(), -1, fmt.Errorf("shell exited before marker %s", marker)
+			if strings.HasPrefix(trimmed, marker) {
+				rest := strings.TrimPrefix(trimmed, marker)
+				code, scanErr := strconv.Atoi(rest)
+				if scanErr != nil {
+					done <- readResult{buf.String(), -1, fmt.Errorf("parsing exit code from marker %s (got %q): %w", marker, rest, scanErr)}
+					return
+				}
+				done <- readResult{buf.String(), code, nil}
+				return
 			}
-			return buf.String(), -1, fmt.Errorf("reading shell output: %w", err)
+
+			buf.WriteString(line)
+
+			if err != nil {
+				if err == io.EOF {
+					done <- readResult{buf.String(), -1, fmt.Errorf("shell exited before marker %s", marker)}
+					return
+				}
+				done <- readResult{buf.String(), -1, fmt.Errorf("reading shell output: %w", err)}
+				return
+			}
 		}
+	}()
+
+	select {
+	case r := <-done:
+		return r.out, r.code, r.err
+	case <-ctx.Done():
+		s.cancel()
+		<-done // drain so the goroutine never leaks
+		return "", -1, fmt.Errorf("running command: %w", ctx.Err())
 	}
 }

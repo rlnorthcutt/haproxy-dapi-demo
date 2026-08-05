@@ -32,7 +32,7 @@ func RunVerify(ctx context.Context, sh *Shell, entries []scenario.VerifyEntry) [
 		default:
 		}
 
-		out, code, err := sh.Run(v.Run)
+		out, code, err := sh.Run(ctx, v.Run)
 		out = strings.TrimRight(out, "\n")
 
 		pass := err == nil && code == 0 && strings.Contains(out, v.Contains)
