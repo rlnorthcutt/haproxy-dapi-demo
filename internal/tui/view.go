@@ -238,7 +238,7 @@ func (m Model) viewScenario() string {
 	rightPane := m.renderRightPane(rightW, contentH)
 
 	// Vertical divider between panes.
-	divider := stylePaneDivider.Render(strings.Repeat("│\n", contentH-1)+"│")
+	divider := stylePaneDivider.Render(strings.Repeat("│\n", contentH-1) + "│")
 
 	content := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, divider, rightPane)
 
@@ -417,8 +417,8 @@ func (m Model) renderLeftPane(width, height int) string {
 }
 
 // renderOutputPanel renders the stdout output section as a fixed-height
-// scrollable panel. outputScroll=0 shows the tail (newest output at bottom);
-// increasing scroll moves the view toward older output.
+// scrollable panel. outputScroll=0 shows the top (first output line visible);
+// increasing scroll moves the view toward newer output.
 func (m Model) renderOutputPanel(width, height int) []string {
 	if height <= 0 {
 		return nil

@@ -200,14 +200,21 @@ func (m Model) Init() tea.Cmd {
 }
 
 // appendLog routes a log line to the haproxy or dataplaneapi buffer.
-// Both services share the "haproxy" container; we split by log format:
-// DPA uses logrus (lines start with `time=`), HAProxy uses syslog.
+// HAProxy and the Data Plane API run in the same container and process tree
+// by design (see CLAUDE.md — no sidecar, no split image), so there is no
+// per-service stream to route on structurally; we split by log format
+// instead: DPA uses logrus (lines start with `time=`), HAProxy uses syslog.
 //
-// DPA healthcheck access logs (/v3/info GETs from [::1]) are dropped —
-// they arrive every 5 s and crowd out real events in the log pane.
+// DPA healthcheck access logs (/v3/info GETs from the container's own
+// loopback) are dropped — they arrive every 5 s and crowd out real events in
+// the log pane. Matched loosely (path substring + either loopback form)
+// since the exact quoting/bracket format is an incidental detail of DPA's
+// access-log renderer, not something scenario authors control.
 func (m *Model) appendLog(_ string, text string) {
 	if strings.HasPrefix(text, "time=") {
-		if strings.Contains(text, `"/v3/info HTTP/1.1"`) && strings.Contains(text, "[::1]") {
+		isHealthcheck := strings.Contains(text, "/v3/info") &&
+			(strings.Contains(text, "127.0.0.1") || strings.Contains(text, "::1"))
+		if isHealthcheck {
 			return // healthcheck ping — not useful in the TUI
 		}
 		m.dapiLog.append(text)
