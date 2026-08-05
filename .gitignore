@@ -1,5 +1,5 @@
 # Build artifacts
-dapi-demo
+/dapi-demo
 dist/
 
 # HAProxy runtime state
