@@ -13,7 +13,13 @@ import (
 )
 
 // Up brings up the compose stack with --wait (blocks until all healthy).
+// haproxy.cfg is gitignored runtime state; seed it from baseline.cfg on
+// first run so the bind mount has something to mount.
 func Up(ctx context.Context) error {
+	if err := seedConfig(); err != nil {
+		return fmt.Errorf("seeding haproxy.cfg: %w", err)
+	}
+
 	cmd := exec.CommandContext(ctx, "podman", "compose", "up", "-d", "--wait")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -60,6 +66,22 @@ func Reset(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// seedConfig copies baseline.cfg to haproxy.cfg if haproxy.cfg does not
+// already exist. It never overwrites an existing config; use Reset for that.
+func seedConfig() error {
+	baselinePath, err := findInWorkdir("haproxy/baseline.cfg")
+	if err != nil {
+		return fmt.Errorf("finding baseline.cfg: %w", err)
+	}
+
+	configPath := filepath.Join(filepath.Dir(baselinePath), "haproxy.cfg")
+	if _, err := os.Stat(configPath); err == nil {
+		return nil
+	}
+
+	return copyFile(baselinePath, configPath)
 }
 
 // IsStackHealthy returns true if the DPA /info endpoint responds.

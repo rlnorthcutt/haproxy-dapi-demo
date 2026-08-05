@@ -5,6 +5,7 @@ dist/
 # HAProxy runtime state
 haproxy/transactions/
 haproxy/haproxy.cfg.bak*
+haproxy/haproxy.cfg
 
 # Generated certs (committed originals are demo-only, do not regenerate)
 # haproxy/certs/
