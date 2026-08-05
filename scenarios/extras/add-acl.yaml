@@ -7,6 +7,10 @@ description: |
   be_canary. This shows nested config objects beyond server management —
   frontends, ACLs, and routing rules are all first-class API resources.
 
+  Note: DPA v3 ACL and backend_switching_rule collection endpoints use PUT
+  (replace the full list) rather than POST (append one item). This means we
+  must include any existing rules in the PUT body alongside the new ones.
+
 prereqs:
   - reset
 
@@ -19,20 +23,30 @@ steps:
       echo "Transaction: $TX"
 
   - title: Add the mobile ACL to fe_main
-    explain: The ACL matches requests with a User-Agent containing "Mobile".
+    explain: |
+      The ACL matches requests whose User-Agent contains "Mobile". In DPA v3
+      the field is acl_name (not name), and the endpoint only accepts PUT —
+      which replaces the full ACL list. The list is currently empty after
+      reset, so this PUT safely adds just our one new entry.
     run: |
-      curl -sX POST -u $AUTH \
+      curl -sX PUT -u $AUTH \
         -H 'Content-Type: application/json' \
         "$HAP/configuration/frontends/fe_main/acls?transaction_id=$TX" \
-        -d '{"index":0,"name":"is_mobile","criterion":"hdr_sub(User-Agent)","value":"Mobile"}' | python3 -m json.tool
+        -d '[{"index":0,"acl_name":"is_mobile","criterion":"hdr_sub(User-Agent)","value":"Mobile"}]' \
+        | python3 -m json.tool
 
   - title: Add use_backend rule
-    explain: When is_mobile matches, route to be_canary.
+    explain: |
+      When is_mobile matches, route to be_canary. Again, PUT replaces the
+      whole list — so we include the existing fetch-based routing rule at
+      index 1 to preserve it. The new conditional rule goes at index 0 so
+      it is evaluated first.
     run: |
-      curl -sX POST -u $AUTH \
+      curl -sX PUT -u $AUTH \
         -H 'Content-Type: application/json' \
         "$HAP/configuration/frontends/fe_main/backend_switching_rules?transaction_id=$TX" \
-        -d '{"index":0,"name":"","cond":"if","cond_test":"is_mobile","backend_name":"be_canary"}' | python3 -m json.tool
+        -d '[{"index":0,"name":"be_canary","cond":"if","cond_test":"is_mobile"},{"index":1,"name":"%[path,map_beg(/usr/local/etc/haproxy/maps/routing.map,be_app)]"}]' \
+        | python3 -m json.tool
 
   - title: Commit the transaction
     explain: Both ACL and routing rule apply in one reload.
@@ -40,14 +54,17 @@ steps:
       curl -sX PUT -u $AUTH "$HAP/transactions/$TX" | python3 -m json.tool
 
   - title: Test mobile routing
-    explain: A request with a mobile User-Agent should hit be_canary (backend-3).
+    explain: A real mobile User-Agent contains the word "Mobile" — that is what the ACL matches on. A plain desktop request follows the normal routing path.
     run: |
-      curl -s -A "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)" http://haproxy/ | grep -o 'backend-[0-9]'
+      echo "Mobile UA:"
+      curl -s -A "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Mobile/15E148" \
+        http://haproxy/ | grep -o 'backend-[0-9]'
+      echo "Desktop UA:"
       curl -s http://haproxy/ | grep -o 'backend-[0-9]'
 
 verify:
   - run: curl -su $AUTH "$HAP/configuration/frontends/fe_main/acls"
-    contains: '"name":"is_mobile"'
+    contains: '"acl_name":"is_mobile"'
 
 cleanup:
   - reset
