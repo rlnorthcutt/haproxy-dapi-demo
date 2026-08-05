@@ -85,7 +85,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.stepIdx < len(m.results) {
 			m.results[msg.stepIdx] = msg.result
 		}
-		m.outputScroll = 0 // reset to tail on new output
+		m.outputScroll = 0 // reset to top on new output
 		return m, m.spinner.Tick
 
 	// ── Verbose overlay ───────────────────────────────────────────────────
@@ -262,13 +262,13 @@ func (m Model) handleKeyScenario(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pickerIdx = m.scenarioIdx
 
 	case "pgup":
-		m.outputScroll += 5
-
-	case "pgdown":
 		m.outputScroll -= 5
 		if m.outputScroll < 0 {
 			m.outputScroll = 0
 		}
+
+	case "pgdown":
+		m.outputScroll += 5
 
 	case "j":
 		m.logScroll++
@@ -325,16 +325,18 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	leftW := (m.width * 6) / 10
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
-		if msg.X < leftW {
-			m.outputScroll++
-		} else {
-			m.logScroll++
-		}
-	case tea.MouseButtonWheelDown:
+		// Scroll up (toward earlier/top content).
 		if msg.X < leftW {
 			if m.outputScroll > 0 {
 				m.outputScroll--
 			}
+		} else {
+			m.logScroll++
+		}
+	case tea.MouseButtonWheelDown:
+		// Scroll down (toward later/bottom content).
+		if msg.X < leftW {
+			m.outputScroll++
 		} else {
 			if m.logScroll > 0 {
 				m.logScroll--

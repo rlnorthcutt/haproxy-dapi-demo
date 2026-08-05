@@ -476,27 +476,24 @@ func (m Model) renderOutputPanel(width, height int) []string {
 		}
 		total := len(outputSrc)
 
-		// Apply scroll: 0 = tail; N = scrolled N lines toward older output.
-		// Hard cap at max(0, total-contentH) so the first output line can
-		// never scroll off the top — no blank panel.
+		// Apply scroll: 0 = top (first output line visible); N = scrolled N
+		// lines toward newer output. Cap so the last line can never scroll
+		// off the bottom — no blank panel.
 		maxScroll := max(0, total-contentH)
 		scroll := m.outputScroll
 		if scroll > maxScroll {
 			scroll = maxScroll
 		}
-		end := total - scroll
-		if end < 0 {
-			end = 0
+		start := scroll
+		end := scroll + contentH
+		if end > total {
+			end = total
 		}
-		start := end - contentH
-		if start < 0 {
-			start = 0
-		}
-		above := start // lines above the visible window
+		below := total - end // lines below the visible window
 
 		var suffix string
-		if above > 0 {
-			suffix = styleLogMeta.Render(fmt.Sprintf("  ↑ %d above", above))
+		if below > 0 {
+			suffix = styleLogMeta.Render(fmt.Sprintf("  ↓ %d more", below))
 		}
 		lines[0] = buildHeader(suffix)
 
@@ -506,15 +503,9 @@ func (m Model) renderOutputPanel(width, height int) []string {
 			row++
 		}
 
-		// Tail-anchor: pad empty rows above content so output sits at the bottom
-		// when there are fewer lines than the panel height.
+		// Top-anchor: render content from the top; empty rows fall naturally
+		// at the bottom when output is shorter than the panel.
 		visible := outputSrc[start:end]
-		topPad := contentH - len(visible)
-		for i := 0; i < topPad && row < height; i++ {
-			// lines[row] is already "" from make
-			row++
-		}
-
 		for _, ol := range visible {
 			if row >= height {
 				break
