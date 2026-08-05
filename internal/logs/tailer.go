@@ -45,14 +45,24 @@ func Tail(ctx context.Context, container string, tailLines int, out chan<- Line,
 	}
 
 	// scan reads all lines from r and sends them to out until r closes or ctx
-	// is cancelled.
+	// is cancelled. The buffer is raised well past bufio.Scanner's 64KB
+	// default so an unusually long line doesn't stop the tail outright; if
+	// scanning still fails, one diagnostic line is emitted so the pane shows
+	// why it went stale instead of silently freezing.
 	scan := func(r io.Reader) {
 		scanner := bufio.NewScanner(r)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for scanner.Scan() {
 			select {
 			case out <- Line{Container: container, Text: scanner.Text()}:
 			case <-ctx.Done():
 				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			select {
+			case out <- Line{Container: container, Text: fmt.Sprintf("[log tail stopped: %v]", err)}:
+			case <-ctx.Done():
 			}
 		}
 	}
