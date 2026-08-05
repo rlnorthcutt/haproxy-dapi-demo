@@ -125,6 +125,15 @@ func openShellCmd(ctx context.Context) tea.Cmd {
 	}
 }
 
+// closeShellCmd closes sh in the background so Update never blocks on the
+// subprocess Wait() inside Shell.Close.
+func closeShellCmd(sh *runner.Shell) tea.Cmd {
+	return func() tea.Msg {
+		_ = sh.Close()
+		return nil
+	}
+}
+
 // runStepCmd executes one step and returns stepFinishedMsg (stay on step).
 func runStepCmd(ctx context.Context, sh *runner.Shell, step scenario.Step, idx int) tea.Cmd {
 	return func() tea.Msg {

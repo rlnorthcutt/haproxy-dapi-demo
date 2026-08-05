@@ -38,6 +38,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == ModeSplash {
 			m.mode = ModePicker
 		}
+		// A retry from the error screen can re-fire this after logs are
+		// already running; stop the old manager before replacing it.
+		if m.logMgr != nil {
+			m.logMgr.Stop()
+			m.logMgr = nil
+		}
 		ctx := context.Background()
 		return m, startLogsCmd(ctx)
 
@@ -122,6 +128,9 @@ func (m Model) quit() (tea.Model, tea.Cmd) {
 	if m.logMgr != nil {
 		m.logMgr.Stop()
 	}
+	if m.shell != nil {
+		return m, tea.Batch(closeShellCmd(m.shell), tea.Quit)
+	}
 	return m, tea.Quit
 }
 
@@ -180,12 +189,13 @@ func (m Model) handleKeyPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.scenarioIdx = m.pickerIdx
 		m.mode = ModeScenario
 		m.initResults()
+		ctx := context.Background()
+		cmds := []tea.Cmd{m.spinner.Tick, openShellCmd(ctx)}
 		if m.shell != nil {
-			_ = m.shell.Close()
+			cmds = append(cmds, closeShellCmd(m.shell))
 			m.shell = nil
 		}
-		ctx := context.Background()
-		return m, tea.Batch(m.spinner.Tick, openShellCmd(ctx))
+		return m, tea.Batch(cmds...)
 	}
 	return m, nil
 }
@@ -271,12 +281,14 @@ func (m Model) handleKeyScenario(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.outputScroll += 5
 
 	case "j":
-		m.logScroll++
-
-	case "k":
+		// Matches wheel-down on the log pane: move toward newer/tail.
 		if m.logScroll > 0 {
 			m.logScroll--
 		}
+
+	case "k":
+		// Matches wheel-up on the log pane: move toward older content.
+		m.logScroll++
 	}
 
 	return m, nil
