@@ -4,15 +4,15 @@ package scenario
 
 // Scenario is a single demo script, loaded from a YAML file.
 type Scenario struct {
-	ID          string       `yaml:"id"`
-	Title       string       `yaml:"title"`
-	Category    string       `yaml:"category"` // config | runtime | storage | client
-	Reload      bool         `yaml:"reload"`
-	Description string       `yaml:"description"`
-	Prereqs     []string     `yaml:"prereqs"`
-	Steps       []Step       `yaml:"steps"`
+	ID          string        `yaml:"id"`
+	Title       string        `yaml:"title"`
+	Category    string        `yaml:"category"` // config | runtime | storage | client
+	Reload      bool          `yaml:"reload"`
+	Description string        `yaml:"description"`
+	Prereqs     []string      `yaml:"prereqs"`
+	Steps       []Step        `yaml:"steps"`
 	Verify      []VerifyEntry `yaml:"verify"`
-	Cleanup     []string     `yaml:"cleanup"`
+	Cleanup     []string      `yaml:"cleanup"`
 }
 
 // Step is one executable step within a scenario.

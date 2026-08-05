@@ -8,10 +8,11 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/spf13/cobra"
+	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/compose"
 	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/runner"
 	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/scenario"
 	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/tui"
+	"github.com/spf13/cobra"
 )
 
 var autoMode bool
@@ -122,7 +123,17 @@ func runHeadless(sc scenario.Scenario, all []scenario.Scenario) error {
 
 // runInteractive launches the full TUI with the given scenario pre-selected.
 func runInteractive(sc scenario.Scenario, all []scenario.Scenario) error {
-	m := tui.InitialModel(all, sc.ID)
+	ctx := context.Background()
+
+	var m tui.Model
+	if err := compose.CheckPodman(ctx); err != nil {
+		// Show the designed error screen rather than a raw stderr dump or an
+		// opaque marker-protocol failure once the stack-health wait runs.
+		m = tui.InitialErrorModel(err)
+	} else {
+		m = tui.InitialModel(all, sc.ID)
+	}
+
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)

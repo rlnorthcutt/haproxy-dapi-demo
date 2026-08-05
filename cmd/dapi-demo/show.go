@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/cobra"
 	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/scenario"
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,6 +26,9 @@ var showCmd = &cobra.Command{
 
 		enc := yaml.NewEncoder(os.Stdout)
 		enc.SetIndent(2)
-		return enc.Encode(s)
+		if err := enc.Encode(s); err != nil {
+			return fmt.Errorf("encoding scenario: %w", err)
+		}
+		return enc.Close()
 	},
 }

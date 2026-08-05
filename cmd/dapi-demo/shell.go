@@ -15,7 +15,7 @@ var shellCmd = &cobra.Command{
 This is the same environment that scenarios run in.`,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		// Build the shell command that pre-exports the env vars.
-		script := `export API=http://haproxy:5555/v3; export HAP=$API/services/haproxy; export AUTH=admin:adminpwd; exec sh`
+		script := `export API=http://haproxy:5555/v3; export HAP=$API/services/haproxy; export AUTH=admin:haproxypwd; exec sh`
 		cmd := exec.Command("podman", "exec", "-it", "dapi-client", "sh", "-c", script)
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout

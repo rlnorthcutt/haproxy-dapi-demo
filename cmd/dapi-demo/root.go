@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/spf13/cobra"
 	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/compose"
 	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/scenario"
 	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/tui"
+	"github.com/spf13/cobra"
 )
 
 // scenariosDir is the default location for scenario YAML files, relative to

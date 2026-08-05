@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/compose"
+	"github.com/spf13/cobra"
 )
 
 var upCmd = &cobra.Command{
