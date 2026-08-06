@@ -156,7 +156,7 @@ func (m Model) handleKeyError(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		m.mode = ModeSplash
 		ctx := context.Background()
-		return m, tea.Batch(m.spinner.Tick, waitForStack(ctx))
+		return m, tea.Batch(m.spinner.Tick, startStackCmd(ctx))
 	case "q", "ctrl+c":
 		return m.quit()
 	}

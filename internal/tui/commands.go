@@ -69,7 +69,23 @@ func toStepResult(r runner.StepResult) StepResult {
 
 // ── commands ──────────────────────────────────────────────────────────────────
 
+// startStackCmd brings the compose stack up (`podman compose up --wait`,
+// creating containers if needed) and then polls the Data Plane API through
+// dapi-client until it responds or times out. The extra poll matters because
+// dapi-client has no healthcheck of its own — compose --wait only confirms
+// the container is running, not that curl is installed yet.
+func startStackCmd(ctx context.Context) tea.Cmd {
+	return func() tea.Msg {
+		if err := compose.UpQuiet(ctx); err != nil {
+			return stackErrorMsg{err: fmt.Errorf("starting stack: %w", err)}
+		}
+		return waitForStack(ctx)()
+	}
+}
+
 // waitForStack polls the compose stack health until it responds or times out.
+// Assumes the stack has already been started (see startStackCmd); it does
+// not create containers itself.
 func waitForStack(ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
 		deadline := time.Now().Add(90 * time.Second)

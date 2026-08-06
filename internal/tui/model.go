@@ -195,7 +195,7 @@ func (m Model) Init() tea.Cmd {
 	ctx := context.Background()
 	return tea.Batch(
 		m.spinner.Tick,
-		waitForStack(ctx),
+		startStackCmd(ctx),
 	)
 }
 

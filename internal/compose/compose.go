@@ -14,17 +14,35 @@ import (
 
 // Up brings up the compose stack with --wait (blocks until all healthy).
 // haproxy.cfg is gitignored runtime state; seed it from baseline.cfg on
-// first run so the bind mount has something to mount.
+// first run so the bind mount has something to mount. Intended for CLI use,
+// where streaming the subprocess's own stdout/stderr is fine.
 func Up(ctx context.Context) error {
 	if err := seedConfig(); err != nil {
 		return fmt.Errorf("seeding haproxy.cfg: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "podman", "compose", "up", "-d", "--wait")
+	cmd := exec.CommandContext(ctx, "podman", "compose", "up", "--detach", "--wait")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("podman compose up: %w", err)
+	}
+	return nil
+}
+
+// UpQuiet behaves like Up but captures the compose subprocess's output
+// instead of writing it to the terminal, folding it into the returned error
+// on failure. Intended for the TUI, which owns the terminal via the
+// alternate screen buffer and cannot let a subprocess write to it directly.
+func UpQuiet(ctx context.Context) error {
+	if err := seedConfig(); err != nil {
+		return fmt.Errorf("seeding haproxy.cfg: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, "podman", "compose", "up", "--detach", "--wait")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("podman compose up: %w (output: %s)", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
