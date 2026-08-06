@@ -10,18 +10,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
-// Up brings up the compose stack with --wait (blocks until all healthy).
+// Up detaches the compose stack in the background. It does not wait for
+// containers to become healthy — call WaitHealthy afterward for that.
 // haproxy.cfg is gitignored runtime state; seed it from baseline.cfg on
 // first run so the bind mount has something to mount. Intended for CLI use,
 // where streaming the subprocess's own stdout/stderr is fine.
+//
+// We poll health ourselves via WaitHealthy rather than passing --wait
+// through to the compose invocation: --wait is handled by whatever external
+// compose provider is installed, and older providers commonly bundled with
+// podman 4.x (this project's minimum supported version) may predate it.
 func Up(ctx context.Context) error {
 	if err := seedConfig(); err != nil {
 		return fmt.Errorf("seeding haproxy.cfg: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "podman", "compose", "up", "--detach", "--wait")
+	cmd := exec.CommandContext(ctx, "podman", "compose", "up", "--detach")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -39,12 +46,32 @@ func UpQuiet(ctx context.Context) error {
 		return fmt.Errorf("seeding haproxy.cfg: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "podman", "compose", "up", "--detach", "--wait")
+	cmd := exec.CommandContext(ctx, "podman", "compose", "up", "--detach")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("podman compose up: %w (output: %s)", err, strings.TrimSpace(string(out)))
 	}
 	return nil
+}
+
+// WaitHealthy polls IsStackHealthy until it succeeds or timeout elapses.
+// dapi-client has no healthcheck of its own, so this is the only thing that
+// confirms curl is installed and the Data Plane API actually responds —
+// compose merely reaching "running"/"healthy" container states isn't enough.
+func WaitHealthy(ctx context.Context, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if IsStackHealthy(ctx) {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("stack did not become healthy within %s", timeout)
 }
 
 // Down tears down the compose stack.

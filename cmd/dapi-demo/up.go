@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/rlnorthcutt/haproxy-dapi-demo/internal/compose"
 	"github.com/spf13/cobra"
@@ -16,6 +17,9 @@ var upCmd = &cobra.Command{
 		ctx := context.Background()
 		fmt.Println("Starting compose stack…")
 		if err := compose.Up(ctx); err != nil {
+			return err
+		}
+		if err := compose.WaitHealthy(ctx, 90*time.Second); err != nil {
 			return err
 		}
 		fmt.Println("Stack is up and healthy.")

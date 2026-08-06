@@ -69,38 +69,22 @@ func toStepResult(r runner.StepResult) StepResult {
 
 // ── commands ──────────────────────────────────────────────────────────────────
 
-// startStackCmd brings the compose stack up (`podman compose up --wait`,
-// creating containers if needed) and then polls the Data Plane API through
-// dapi-client until it responds or times out. The extra poll matters because
-// dapi-client has no healthcheck of its own — compose --wait only confirms
-// the container is running, not that curl is installed yet.
+// stackWaitTimeout bounds how long startStackCmd waits for health after
+// bringing the stack up.
+const stackWaitTimeout = 90 * time.Second
+
+// startStackCmd brings the compose stack up (creating containers if needed)
+// and then polls the Data Plane API through dapi-client until it responds
+// or times out.
 func startStackCmd(ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
 		if err := compose.UpQuiet(ctx); err != nil {
 			return stackErrorMsg{err: fmt.Errorf("starting stack: %w", err)}
 		}
-		return waitForStack(ctx)()
-	}
-}
-
-// waitForStack polls the compose stack health until it responds or times out.
-// Assumes the stack has already been started (see startStackCmd); it does
-// not create containers itself.
-func waitForStack(ctx context.Context) tea.Cmd {
-	return func() tea.Msg {
-		deadline := time.Now().Add(90 * time.Second)
-		for time.Now().Before(deadline) {
-			select {
-			case <-ctx.Done():
-				return stackErrorMsg{err: ctx.Err()}
-			default:
-			}
-			if compose.IsStackHealthy(ctx) {
-				return stackReadyMsg{}
-			}
-			time.Sleep(2 * time.Second)
+		if err := compose.WaitHealthy(ctx, stackWaitTimeout); err != nil {
+			return stackErrorMsg{err: fmt.Errorf("%w — try: dapi-demo up", err)}
 		}
-		return stackErrorMsg{err: fmt.Errorf("stack did not become healthy within 90 s — try: dapi-demo up")}
+		return stackReadyMsg{}
 	}
 }
 
